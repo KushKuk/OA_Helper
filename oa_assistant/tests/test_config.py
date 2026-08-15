@@ -16,11 +16,11 @@ def test_settings_loaded():
     assert settings.VERSION == "0.1.0"
     assert settings.DEBUG is False
     assert settings.LOG_LEVEL == "INFO"
-    assert settings.AI_PROVIDER == "openai"
+    assert settings.AI_PROVIDER == "gemini"
     assert settings.OCR_PROVIDER == "tesseract"
     assert settings.SCREEN_CAPTURE_PROVIDER == "mss"
-    assert settings.HOTKEY_TOGGLE_OVERLAY == "ctrl+alt+o"
-    assert settings.HOTKEY_CAPTURE_REGION == "ctrl+alt+c"
+    assert settings.HOTKEY_TOGGLE_OVERLAY == "ctrl+space"
+    assert settings.HOTKEY_CAPTURE_REGION == "ctrl+shift+c"
     assert settings.OVERLAY_OPACITY == 0.9
     assert settings.OVERLAY_WIDTH == 400
     assert settings.OVERLAY_HEIGHT == 500
@@ -31,6 +31,7 @@ def test_settings_from_env(monkeypatch):
     monkeypatch.setenv("APP_NAME", "Test Assistant")
     monkeypatch.setenv("DEBUG", "True")
     monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+    monkeypatch.setenv("HOTKEY_TOGGLE_OVERLAY", "ctrl+alt+t")
 
     # Reload settings to pick up environment changes
     from importlib import reload
@@ -40,3 +41,4 @@ def test_settings_from_env(monkeypatch):
     assert config.settings.APP_NAME == "Test Assistant"
     assert config.settings.DEBUG is True
     assert config.settings.LOG_LEVEL == "DEBUG"
+    assert config.settings.HOTKEY_TOGGLE_OVERLAY == "ctrl+alt+t"

@@ -20,7 +20,9 @@ class Settings(BaseSettings):
     LOG_FILE: Optional[str] = None
 
     # AI Provider
-    AI_PROVIDER: str = "openai"  # or "anthropic", "local", etc.
+    AI_PROVIDER: str = "gemini"  # or "openai", "anthropic", "local", etc.
+    AI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
 
@@ -32,8 +34,8 @@ class Settings(BaseSettings):
     SCREEN_CAPTURE_PROVIDER: str = "mss"
 
     # Hotkeys
-    HOTKEY_TOGGLE_OVERLAY: str = "ctrl+alt+o"
-    HOTKEY_CAPTURE_REGION: str = "ctrl+alt+c"
+    HOTKEY_TOGGLE_OVERLAY: str = "ctrl+space"
+    HOTKEY_CAPTURE_REGION: str = "ctrl+shift+c"
 
     # Overlay settings
     OVERLAY_OPACITY: float = 0.9

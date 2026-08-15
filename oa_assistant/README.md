@@ -18,11 +18,20 @@ OA Assistant is a floating overlay application designed to help with coding prac
 
 ## Current Status
 
-This is Phase 1 of implementation, providing:
+This is Phase 7 of implementation, providing:
 - Basic project structure
 - Configuration management
 - Logging setup
-- Minimal PySide6 application to verify the setup
+- PySide6 application with overlay window
+- Global hotkey system
+- Screen capture with interactive region selection
+- OCR (Optical Character Recognition) for text extraction using Tesseract
+- Text extraction and copy functionality
+- AI integration for contextual assistance using Google Gemini
+- AI provider abstraction layer for extensibility
+- User-triggered AI analysis via "Analyze" button
+- Background processing for AI operations to prevent GUI blocking
+- Copy AI response functionality
 
 ## Installation
 
@@ -32,7 +41,11 @@ This is Phase 1 of implementation, providing:
    - Windows: `venv\Scripts\activate`
    - Unix/MacOS: `source venv/bin/activate`
 4. Install dependencies: `pip install -r requirements.txt`
-5. Copy `.env.example` to `.env` and fill in required values
+5. Install Tesseract OCR engine (required for OCR functionality):
+   - Windows: Download from https://github.com/UB-Mannheim/tesseract/wiki
+   - macOS: `brew install tesseract`
+   - Linux: `sudo apt-get install tesseract-ocr` or equivalent for your distribution
+6. Copy `.env.example` to `.env` and fill in required values
 
 ## Usage
 

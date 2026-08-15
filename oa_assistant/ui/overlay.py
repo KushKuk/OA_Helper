@@ -7,9 +7,10 @@ from PySide6.QtWidgets import (
     QPushButton,
     QHBoxLayout,
     QVBoxLayout,
+    QSizePolicy
 )
-from PySide6.QtCore import Qt, QPoint, QRect, QSize
-from PySide6.QtGui import QEnterEvent, QMouseEvent
+from PySide6.QtCore import Qt, QPoint, QRect, QSize, Signal
+from PySide6.QtGui import QEnterEvent, QMouseEvent, QImage, QPixmap, QPainter, QColor, QFont, QPalette
 
 from oa_assistant.core.config import settings
 from oa_assistant.core.logging import logger
@@ -20,6 +21,16 @@ class OverlayWindow(QWidget):
     """
     A frameless, always-on-top overlay window with draggable header and resizable borders.
     """
+
+    # Signals for preview interactions
+    retake_requested = Signal()
+    cancel_requested = Signal()
+    # Signals for OCR interactions
+    extract_text_requested = Signal()
+    copy_text_requested = Signal()
+    # Signals for AI interactions
+    analyze_requested = Signal()
+    copy_ai_response_requested = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -70,17 +81,11 @@ class OverlayWindow(QWidget):
         header = self._create_header()
         main_layout.addWidget(header)
 
-        # Content area
-        content = QLabel("Ready\n\nSelect a region to analyze.")
-        content.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        content.setStyleSheet(
-            """
-            background-color: rgba(30, 30, 30, 0.8);
-            color: white;
-            font-size: 14px;
-            """
-        )
-        main_layout.addWidget(content, stretch=1)
+        # Content area - we use a container that we can swap content in
+        self.content_container = QWidget()
+        self.content_layout = QVBoxLayout()
+        self.content_container.setLayout(self.content_layout)
+        main_layout.addWidget(self.content_container, stretch=1)
 
         self.setLayout(main_layout)
 
@@ -110,6 +115,9 @@ class OverlayWindow(QWidget):
             }
             """
         )
+
+        # Set up initial content
+        self._show_normal_content()
 
     def _create_header(self) -> QWidget:
         """Create the custom header with title and buttons."""
@@ -163,6 +171,143 @@ class OverlayWindow(QWidget):
         header.setLayout(layout)
         return header
 
+    def _show_normal_content(self) -> None:
+        """Show the normal ready state content."""
+        # Clear current content
+        self._clear_content_layout()
+
+        # Create and add the normal message label
+        normal_label = QLabel("Ready\n\nSelect a region to analyze.")
+        normal_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        normal_label.setStyleSheet(
+            """
+            background-color: rgba(30, 30, 30, 0.8);
+            color: white;
+            font-size: 14px;
+            padding: 20px;
+            border-radius: 5px;
+            """
+        )
+        self.content_layout.addWidget(normal_label)
+
+    def _clear_content_layout(self) -> None:
+        """Remove all widgets from the content layout."""
+        while self.content_layout.count():
+            item = self.content_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def show_capture_preview(self, capture_result) -> None:
+        """
+        Show a preview of the captured image.
+
+        Args:
+            capture_result: CaptureResult object containing the image and metadata
+        """
+        logger.debug("Showing capture preview")
+        self._clear_content_layout()
+
+        # Create preview content
+        preview_widget = QWidget()
+        preview_layout = QVBoxLayout()
+        preview_widget.setLayout(preview_layout)
+        preview_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_layout.setSpacing(10)
+
+        # Success message
+        success_label = QLabel("Capture successful")
+        success_label.setStyleSheet("font-size: 16px; font-weight: bold; color: white;")
+        preview_layout.addWidget(success_label)
+
+        # Image preview
+        if capture_result.image:
+            image_label = QLabel()
+            # Convert PIL image to QPixmap
+            pixmap = self._pil_to_pixmap(capture_result.image)
+            # Scale down to fit reasonably (max 200x200 while keeping aspect ratio)
+            scaled_pixmap = pixmap.scaled(200, 200, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            image_label.setPixmap(scaled_pixmap)
+            image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            preview_layout.addWidget(image_label)
+
+        # Dimensions info
+        dim_label = QLabel(f"{capture_result.width} × {capture_result.height}")
+        dim_label.setStyleSheet("font-size: 14px; color: white;")
+        preview_layout.addWidget(dim_label)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(10)
+
+        extract_button = QPushButton("Extract Text")
+        extract_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(80, 80, 80, 0.3);
+                border: 1px solid rgba(120, 120, 120, 0.5);
+                border-radius: 3px;
+                padding: 5px 15px;
+            }
+            QPushButton:hover {
+                background-color: rgba(100, 100, 100, 0.4);
+            }
+            QPushButton:pressed {
+                background-color: rgba(60, 60, 60, 0.5);
+            }
+        """)
+        extract_button.clicked.connect(self.extract_text_requested.emit)
+        button_layout.addWidget(extract_button)
+
+        retake_button = QPushButton("Retake")
+        retake_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(80, 80, 80, 0.3);
+                border: 1px solid rgba(120, 120, 120, 0.5);
+                border-radius: 3px;
+                padding: 5px 15px;
+            }
+            QPushButton:hover {
+                background-color: rgba(100, 100, 100, 0.4);
+            }
+            QPushButton:pressed {
+                background-color: rgba(60, 60, 60, 0.5);
+            }
+        """)
+        retake_button.clicked.connect(self.retake_requested.emit)
+        button_layout.addWidget(retake_button)
+
+        cancel_button = QPushButton("Cancel")
+        cancel_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(80, 80, 80, 0.3);
+                border: 1px solid rgba(120, 120, 120, 0.5);
+                border-radius: 3px;
+                padding: 5px 15px;
+            }
+            QPushButton:hover {
+                background-color: rgba(100, 100, 100, 0.4);
+            }
+            QPushButton:pressed {
+                background-color: rgba(60, 60, 60, 0.5);
+            }
+        """)
+        cancel_button.clicked.connect(self.cancel_requested.emit)
+        button_layout.addWidget(cancel_button)
+
+        preview_layout.addLayout(button_layout)
+
+        # Add the preview widget to the content layout
+        self.content_layout.addWidget(preview_widget)
+
+    def _pil_to_pixmap(self, pil_image) -> QPixmap:
+        """Convert a PIL Image to a QPixmap."""
+        # Convert PIL image to RGBA if it isn't already
+        if pil_image.mode != "RGBA":
+            pil_image = pil_image.convert("RGBA")
+        data = pil_image.tobytes("raw", "RGBA")
+        qim = QImage(data, pil_image.width, pil_image.height, QImage.Format.Format_RGBA8888)
+        return QPixmap.fromImage(qim)
+
     def show_overlay(self) -> None:
         """Show the overlay window."""
         self.window_manager.show()
@@ -177,7 +322,7 @@ class OverlayWindow(QWidget):
         """Toggle the overlay window visibility."""
         self.window_manager.toggle_visibility()
 
-    # Mouse event handling for dragging and resizing
+    # Mouse event handling for dragging and resizing (unchanged from before)
     def mousePressEvent(self, event: QMouseEvent) -> None:
         """Handle mouse press events for dragging and resizing."""
         if event.button() == Qt.MouseButton.LeftButton:
@@ -295,6 +440,226 @@ class OverlayWindow(QWidget):
         # Reset cursor when leaving and re-entering
         self.setCursor(Qt.ArrowCursor)
         super().enterEvent(event)
+
+    def show_ocr_processing(self) -> None:
+        """Show OCR processing state in the overlay."""
+        logger.debug("Showing OCR processing state")
+        self._clear_content_layout()
+
+        # Create processing content
+        processing_widget = QWidget()
+        processing_layout = QVBoxLayout()
+        processing_widget.setLayout(processing_layout)
+        processing_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        processing_layout.setSpacing(10)
+
+        # Processing message
+        processing_label = QLabel("Processing text...")
+        processing_label.setStyleSheet("font-size: 16px; color: white;")
+        processing_layout.addWidget(processing_label)
+
+        # Add the processing widget to the content layout
+        self.content_layout.addWidget(processing_widget)
+
+    def show_ocr_results(self, result) -> None:
+        """
+        Show OCR results in the overlay.
+
+        Args:
+            result: OCRResult object containing extracted text and metadata
+        """
+        logger.debug("Showing OCR results")
+        self._clear_content_layout()
+
+        # Create results content
+        results_widget = QWidget()
+        results_layout = QVBoxLayout()
+        results_widget.setLayout(results_layout)
+        results_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        results_layout.setSpacing(10)
+
+        # Results message
+        if result.is_empty():
+            results_label = QLabel("No text found")
+        else:
+            # Truncate text for display if too long
+            display_text = result.text
+            if len(display_text) > 100:
+                display_text = display_text[:100] + "..."
+            results_label = QLabel(display_text)
+            results_label.setWordWrap(True)
+
+        results_label.setStyleSheet("""
+            QLabel {
+                background-color: rgba(40, 40, 40, 0.6);
+                color: white;
+                font-size: 14px;
+                padding: 15px;
+                border-radius: 3px;
+                min-height: 40px;
+            }
+        """)
+        results_layout.addWidget(results_label)
+
+        # Confidence and metadata
+        if result.confidence is not None:
+            conf_label = QLabel(f"Confidence: {result.confidence:.1f}%")
+            conf_label.setStyleSheet("font-size: 12px; color: #CCCCCC;")
+            results_layout.addWidget(conf_label)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(10)
+
+        extract_button = QPushButton("Extract Text")
+        extract_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(80, 80, 80, 0.3);
+                border: 1px solid rgba(120, 120, 120, 0.5);
+                border-radius: 3px;
+                padding: 5px 15px;
+            }
+            QPushButton:hover {
+                background-color: rgba(100, 100, 100, 0.4);
+            }
+            QPushButton:pressed {
+                background-color: rgba(60, 60, 60, 0.5);
+            }
+        """)
+        extract_button.clicked.connect(self.extract_text_requested.emit)
+        button_layout.addWidget(extract_button)
+
+        analyze_button = QPushButton("Analyze")
+        analyze_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(80, 80, 80, 0.3);
+                border: 1px solid rgba(120, 120, 120, 0.5);
+                border-radius: 3px;
+                padding: 5px 15px;
+            }
+            QPushButton:hover {
+                background-color: rgba(100, 100, 100, 0.4);
+            }
+            QPushButton:pressed {
+                background-color: rgba(60, 60, 60, 0.5);
+            }
+        """)
+        analyze_button.clicked.connect(self.analyze_requested.emit)
+        button_layout.addWidget(analyze_button)
+
+        copy_button = QPushButton("Copy Text")
+        copy_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(80, 80, 80, 0.3);
+                border: 1px solid rgba(120, 120, 120, 0.5);
+                border-radius: 3px;
+                padding: 5px 15px;
+            }
+            QPushButton:hover {
+                background-color: rgba(100, 100, 100, 0.4);
+            }
+            QPushButton:pressed {
+                background-color: rgba(60, 60, 60, 0.5);
+            }
+        """)
+        copy_button.clicked.connect(self.copy_text_requested.emit)
+        button_layout.addWidget(copy_button)
+
+        results_layout.addLayout(button_layout)
+
+        # Add the results widget to the content layout
+        self.content_layout.addWidget(results_widget)
+
+    def show_ai_results(self, result) -> None:
+        """
+        Show AI results in the overlay.
+
+        Args:
+            result: AIResponse object containing AI analysis and metadata
+        """
+        logger.debug("Showing AI results")
+        self._clear_content_layout()
+
+        # Create results content
+        results_widget = QWidget()
+        results_layout = QVBoxLayout()
+        results_widget.setLayout(results_layout)
+        results_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        results_layout.setSpacing(10)
+
+        # Results message
+        if result.is_empty():
+            results_label = QLabel("No analysis available")
+        else:
+            # Truncate text for display if too long
+            display_text = result.text
+            if len(display_text) > 100:
+                display_text = display_text[:100] + "..."
+            results_label = QLabel(display_text)
+            results_label.setWordWrap(True)
+
+        results_label.setStyleSheet("""
+            QLabel {
+                background-color: rgba(40, 40, 40, 0.6);
+                color: white;
+                font-size: 14px;
+                padding: 15px;
+                border-radius: 3px;
+                min-height: 40px;
+            }
+        """)
+        results_layout.addWidget(results_label)
+
+        # Latency and metadata
+        if result.latency is not None:
+            latency_label = QLabel(f"Latency: {result.latency:.2f}s")
+            latency_label.setStyleSheet("font-size: 12px; color: #CCCCCC;")
+            results_layout.addWidget(latency_label)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(10)
+
+        copy_button = QPushButton("Copy Response")
+        copy_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(80, 80, 80, 0.3);
+                border: 1px solid rgba(120, 120, 120, 0.5);
+                border-radius: 3px;
+                padding: 5px 15px;
+            }
+            QPushButton:hover {
+                background-color: rgba(100, 100, 100, 0.4);
+            }
+            QPushButton:pressed {
+                background-color: rgba(60, 60, 60, 0.5);
+            }
+        """)
+        copy_button.clicked.connect(self.copy_ai_response_requested.emit)
+        button_layout.addWidget(copy_button)
+
+        retake_button = QPushButton("Retake")
+        retake_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(80, 80, 80, 0.3);
+                border: 1px solid rgba(120, 120, 120, 0.5);
+                border-radius: 3px;
+                padding: 5px 15px;
+            }
+            QPushButton:hover {
+                background-color: rgba(100, 100, 100, 0.4);
+            }
+            QPushButton:pressed {
+                background-color: rgba(60, 60, 60, 0.5);
+            }
+        """)
+        retake_button.clicked.connect(self.retake_requested.emit)
+        button_layout.addWidget(retake_button)
+
+        results_layout.addLayout(button_layout)
+
+        # Add the results widget to the content layout
+        self.content_layout.addWidget(results_widget)
 
     def closeEvent(self, event) -> None:
         """Handle window close events."""
