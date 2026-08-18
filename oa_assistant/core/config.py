@@ -20,9 +20,12 @@ class Settings(BaseSettings):
     LOG_FILE: Optional[str] = None
 
     # AI Provider
-    AI_PROVIDER: str = "gemini"  # or "openai", "anthropic", "local", etc.
+    AI_PROVIDER: str = "gemini"  # or "gemini", "nemotron"
     AI_MODEL: str = "gemini-1.5-flash"
     GEMINI_API_KEY: Optional[str] = None
+    NEMOTRON_API_KEY: Optional[str] = None
+    NEMOTRON_MODEL: str = "nemotron-3-8b-chat"
+    NEMOTRON_API_URL: str = "https://ai.api.nvidia.com/v1/nemotron"
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
 
@@ -32,6 +35,7 @@ class Settings(BaseSettings):
 
     # Screen Capture
     SCREEN_CAPTURE_PROVIDER: str = "mss"
+    CAPTURE_MODE: str = "current_monitor"  # or "all_monitors"
 
     # Hotkeys
     HOTKEY_TOGGLE_OVERLAY: str = "ctrl+space"

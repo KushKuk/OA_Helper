@@ -7,6 +7,7 @@ from PIL import Image
 from typing import Optional, Dict, List
 
 from oa_assistant.capture.interface import ScreenCaptureInterface, CaptureResult
+from oa_assistant.core.config import settings
 from oa_assistant.core.logging import logger
 
 
@@ -106,6 +107,91 @@ class ScreenCapture(ScreenCaptureInterface):
 
         except Exception as e:
             logger.error(f"Failed to capture monitor {monitor_index}: {e}")
+            return None
+
+    def capture_full_screen(self) -> Optional[CaptureResult]:
+        """
+        Capture the full screen based on the configured capture mode.
+
+        Returns:
+            CaptureResult: Captured image and metadata, or None if failed
+        """
+        try:
+            if settings.CAPTURE_MODE == "all_monitors":
+                return self._capture_all_monitors()
+            else:  # Default to current_monitor
+                return self._capture_current_monitor()
+        except Exception as e:
+            logger.error(f"Failed to capture full screen: {e}")
+            return None
+
+    def _capture_current_monitor(self) -> Optional[CaptureResult]:
+        """
+        Capture the monitor that currently has the cursor/focus.
+
+        Returns:
+            CaptureResult: Captured image and metadata, or None if failed
+        """
+        try:
+            # Get cursor position
+            import win32gui
+            cursor_pos = win32gui.GetCursorPos()
+            x, y = cursor_pos
+
+            # Get monitor at cursor position
+            monitor_info = self._get_monitor_at_point(x, y)
+
+            if not monitor_info:
+                # Fallback to primary monitor
+                logger.warning("Could not determine current monitor, falling back to primary")
+                monitor_index = 0
+            else:
+                monitor_index = monitor_info.get("index", 0)
+
+            return self.capture_monitor(monitor_index)
+
+        except ImportError:
+            # Fallback if win32gui is not available
+            logger.warning("win32gui not available, falling back to primary monitor")
+            return self.capture_monitor(0)
+        except Exception as e:
+            logger.error(f"Failed to capture current monitor: {e}")
+            # Fallback to primary monitor
+            return self.capture_monitor(0) if self.get_monitor_count() > 0 else None
+
+    def _capture_all_monitors(self) -> Optional[CaptureResult]:
+        """
+        Capture all monitors combined.
+
+        Returns:
+            CaptureResult: Captured image and metadata, or None if failed
+        """
+        try:
+            # Get all monitors bounding box
+            all monitors = self._sct.monitors[0]  # Index 0 is all monitors
+
+            # Capture the entire virtual desktop
+            sct_img = self._sct.grab(all monitors)
+
+            # Convert to PIL Image
+            img = Image.frombytes(
+                "RGB",
+                (sct_img.size.width, sct_img.size.height),
+                sct_img.rgb
+            )
+
+            logger.debug(f"Captured all monitors: {all monitors}")
+            return CaptureResult(
+                img,
+                all_monitors["left"],
+                all_monitors["top"],
+                all_monitors["width"],
+                all_monitors["height"],
+                {"mode": "all_monitors", **all_monitors}
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to capture all monitors: {e}")
             return None
 
     def get_monitor_count(self) -> int:

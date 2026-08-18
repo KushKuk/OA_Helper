@@ -3,6 +3,8 @@ Application controller for coordinating overlay, window manager, and hotkeys.
 """
 import sys
 import time
+from typing import Optional
+from PIL import Image
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTimer, QThread, QObject, Signal
@@ -15,9 +17,32 @@ from oa_assistant.windows.window_manager import WindowManager
 from oa_assistant.capture.screen_capture import ScreenCapture
 from oa_assistant.capture.region_selector import RegionSelector
 from oa_assistant.ocr.service import ocr_service
-from oa_assistant.ocr.models import OCRMode
+from oa_assistant.ocr.models import OCRMode, OCRResult
 from oa_assistant.ai.service import ai_service
-from oa_assistant.ai.models import AnalysisContext
+from oa_assistant.ai.models import AnalysisContext, ScreenContext
+
+
+class CaptureWorker(QObject):
+    """
+    Worker object for performing screen capture in a separate thread.
+    """
+    finished = Signal(object)
+
+    def __init__(self, screen_capture):
+        super().__init__()
+        self.screen_capture = screen_capture
+
+    def process(self):
+        """
+        Process the screen capture operation.
+        """
+        try:
+            result = self.screen_capture.capture_full_screen()
+            self.finished.emit(result)
+        except Exception as e:
+            # Log the error and emit None result
+            logger.error(f"Capture processing failed: {e}")
+            self.finished.emit(None)
 
 
 class OCRWorker(QObject):
@@ -102,6 +127,12 @@ class OAAssistantApplication:
         self.overlay.extract_text_requested.connect(self._on_extract_text)
         self.overlay.copy_text_requested.connect(self._on_copy_text)
         self.overlay.analyze_requested.connect(self._on_analyze)
+        self.overlay.copy_ai_response_requested.connect(self._on_copy_ai_response)
+        self.overlay.retry_requested.connect(self._on_retry_requested)
+        self.overlay.retake_requested.connect(self._on_retake_requested)
+        self.overlay.cancel_requested.connect(self._on_cancel_requested)
+        # Connect capture processing signal (if needed for direct overlay-initiated capture)
+        # self.overlay.capture_processing_requested.connect(self._start_fullscreen_capture)
 
         logger.info("OA Assistant application initialized")
 
@@ -109,6 +140,8 @@ class OAAssistantApplication:
         self._last_ocr_result = None
         # Store last AI result for copy functionality
         self._last_ai_result = None
+        # Store last capture result for potential retake
+        self._last_capture_result = None
 
     def _handle_hotkey_action(self, action_name: str) -> None:
         """
@@ -121,7 +154,7 @@ class OAAssistantApplication:
         if action_name == "toggle_overlay":
             self.toggle_overlay()
         elif action_name == "capture_region":
-            self._start_capture_region()
+            self._start_fullscreen_capture()
         # Future actions can be added here
 
     def toggle_overlay(self) -> None:
@@ -131,9 +164,9 @@ class OAAssistantApplication:
         else:
             self.overlay.show_overlay()
 
-    def _start_capture_region(self) -> None:
-        """Start the region capture process."""
-        logger.info("Starting region capture")
+    def _start_fullscreen_capture(self) -> None:
+        """Start the fullscreen capture process."""
+        logger.info("Starting fullscreen capture")
 
         # Hide the overlay during capture
         if self.overlay.isVisible():
@@ -142,11 +175,20 @@ class OAAssistantApplication:
         else:
             self._overlay_was_visible = False
 
-        # Create and show region selector
-        self.region_selector = RegionSelector()
-        self.region_selector.selection_complete = self._on_region_selected
-        self.region_selector.selection_cancelled = self._on_capture_cancelled
-        self.region_selector.show()
+        # Show capturing state in overlay
+        self.overlay.show_capture_processing()
+
+        # Perform capture in a way that doesn't block the GUI
+        # Use QThread to perform capture in background
+        self._capture_thread = QThread()
+        self._capture_worker = CaptureWorker(self.screen_capture)
+        self._capture_worker.moveToThread(self._capture_thread)
+        self._capture_thread.started.connect(self._capture_worker.process)
+        self._capture_worker.finished.connect(self._on_capture_finished)
+        self._capture_worker.finished.connect(self._capture_thread.quit)
+        self._capture_worker.finished.connect(self._capture_worker.deleteLater)
+        self._capture_thread.finished.connect(self._capture_thread.deleteLater)
+        self._capture_thread.start()
 
     def _on_region_selected(self, rect) -> None:
         """Handle region selection completion."""
@@ -325,6 +367,18 @@ class OAAssistantApplication:
         else:
             logger.info("No AI response to copy")
 
+    def _on_analyze(self) -> None:
+        """
+        Handle analyze request from overlay (for backward compatibility).
+        """
+        logger.info("Analyze requested")
+        if self._last_ocr_result and not self._last_ocr_result.is_empty():
+            # Trigger AI analysis on the last OCR result
+            self._perform_ai(self._last_ocr_result)
+        else:
+            logger.warning("No OCR result available for analysis")
+            self.overlay.show_ai_failed()
+
     def _on_ocr_finished(self, result) -> None:
         """
         Handle finished OCR operation from worker thread.
@@ -358,6 +412,22 @@ def _on_ai_finished(self, result) -> None:
 
         # Update overlay with AI results
         self.overlay.show_ai_results(result)
+
+    def _on_retake_requested(self) -> None:
+        """Handle retake request from overlay."""
+        logger.info("Retake requested")
+        self._start_fullscreen_capture()
+
+    def _on_cancel_requested(self) -> None:
+        """Handle cancel request from overlay."""
+        logger.info("Cancel requested")
+        self._restore_overlay()
+
+    def _on_retry_requested(self) -> None:
+        """Handle retry request from overlay."""
+        logger.info("Retry requested")
+        # Retry the last operation - for now, restart capture
+        self._start_fullscreen_capture()
 
     def stop(self) -> None:
         """Stop the application and clean up resources."""

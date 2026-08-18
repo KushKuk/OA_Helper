@@ -31,6 +31,10 @@ class OverlayWindow(QWidget):
     # Signals for AI interactions
     analyze_requested = Signal()
     copy_ai_response_requested = Signal()
+    # Signals for capture interactions
+    capture_processing_requested = Signal()
+    # Signals for retry interactions
+    retry_requested = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -441,6 +445,26 @@ class OverlayWindow(QWidget):
         self.setCursor(Qt.ArrowCursor)
         super().enterEvent(event)
 
+    def show_capture_processing(self) -> None:
+        """Show capture processing state in the overlay."""
+        logger.debug("Showing capture processing state")
+        self._clear_content_layout()
+
+        # Create processing content
+        processing_widget = QWidget()
+        processing_layout = QVBoxLayout()
+        processing_widget.setLayout(processing_layout)
+        processing_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        processing_layout.setSpacing(10)
+
+        # Processing message
+        processing_label = QLabel("Capturing screen...")
+        processing_label.setStyleSheet("font-size: 16px; color: white;")
+        processing_layout.addWidget(processing_label)
+
+        # Add the processing widget to the content layout
+        self.content_layout.addWidget(processing_widget)
+
     def show_ocr_processing(self) -> None:
         """Show OCR processing state in the overlay."""
         logger.debug("Showing OCR processing state")
@@ -454,13 +478,116 @@ class OverlayWindow(QWidget):
         processing_layout.setSpacing(10)
 
         # Processing message
-        processing_label = QLabel("Processing text...")
+        processing_label = QLabel("Reading screen...")
         processing_label.setStyleSheet("font-size: 16px; color: white;")
         processing_layout.addWidget(processing_label)
 
         # Add the processing widget to the content layout
         self.content_layout.addWidget(processing_widget)
 
+    def show_ai_processing(self, provider_name: str = "AI") -> None:
+        """Show AI processing state in the overlay.
+
+        Args:
+            provider_name: Name of the AI provider being used
+        """
+        logger.debug(f"Showing {provider_name} processing state")
+        self._clear_content_layout()
+
+        # Create processing content
+        processing_widget = QWidget()
+        processing_layout = QVBoxLayout()
+        processing_widget.setLayout(processing_layout)
+        processing_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        processing_layout.setSpacing(10)
+
+        # Processing message
+        processing_label = QLabel(f"Analyzing with {provider_name}...")
+        processing_label.setStyleSheet("font-size: 16px; color: white;")
+        processing_layout.addWidget(processing_label)
+
+        # Add the processing widget to the content layout
+        self.content_layout.addWidget(processing_widget)
+
+    def show_capture_failed(self) -> None:
+        """Show capture failed state in the overlay."""
+        logger.debug("Showing capture failed state")
+        self._clear_content_layout()
+
+        # Create failed content
+        failed_widget = QWidget()
+        failed_layout = QVBoxLayout()
+        failed_widget.setLayout(failed_layout)
+        failed_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        failed_layout.setSpacing(10)
+
+        # Failed message
+        failed_label = QLabel("Screen capture failed")
+        failed_label.setStyleSheet("font-size: 16px; color: #FF6B6B;")
+        failed_layout.addWidget(failed_label)
+
+        # Retry button
+        retry_button = QPushButton("Retry")
+        retry_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(80, 80, 80, 0.3);
+                border: 1px solid rgba(120, 120, 120, 0.5);
+                border-radius: 3px;
+                padding: 5px 15px;
+            }
+            QPushButton:hover {
+                background-color: rgba(100, 100, 100, 0.4);
+            }
+            QPushButton:pressed {
+                background-color: rgba(60, 60, 60, 0.5);
+            }
+        """)
+        retry_button.clicked.connect(lambda: self._on_retry_clicked.emit() if hasattr(self, '_on_retry_clicked') else None)
+        failed_layout.addWidget(retry_button)
+
+        # Add the failed widget to the content layout
+        self.content_layout.addWidget(failed_widget)
+
+    def show_ai_failed(self) -> None:
+        """Show AI failed state in the overlay."""
+        logger.debug("Showing AI failed state")
+        self._clear_content_layout()
+
+        # Create failed content
+        failed_widget = QWidget()
+        failed_layout = QVBoxLayout()
+        failed_widget.setLayout(failed_layout)
+        failed_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        failed_layout.setSpacing(10)
+
+        # Failed message
+        failed_label = QLabel("AI analysis failed")
+        failed_label.setStyleSheet("font-size: 16px; color: #FF6B6B;")
+        failed_layout.addWidget(failed_label)
+
+        # Retry button
+        retry_button = QPushButton("Retry")
+        retry_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(80, 80, 80, 0.3);
+                border: 1px solid rgba(120, 120, 120, 0.5);
+                border-radius: 3px;
+                padding: 5px 15px;
+            }
+            QPushButton:hover {
+                background-color: rgba(100, 100, 100, 0.4);
+            }
+            QPushButton:pressed {
+                background-color: rgba(60, 60, 60, 0.5);
+            }
+        """)
+        retry_button.clicked.connect(lambda: self._on_retry_clicked.emit() if hasattr(self, '_on_retry_clicked') else None)
+        failed_layout.addWidget(retry_button)
+
+        # Add the failed widget to the content layout
+        self.content_layout.addWidget(failed_widget)
+
+    
     def show_ocr_results(self, result) -> None:
         """
         Show OCR results in the overlay.
